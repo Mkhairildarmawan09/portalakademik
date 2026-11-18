@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block title %}Login Portal Akademik — SIAKAD PORTAL MVP{% endblock %}
+
+{% block body_wrapper %}
+<div class="login-wrapper">
+  <!-- Kolom Kiri: Latar Kertas Akademik Petak 48px sesuai Figma -->
+  <section class="login-paper-pane">
+    <div>
+      <div class="portal-category mb-2">PORTAL AKADEMIK</div>
+      <h1 class="login-title">SIAKAD PORTAL AKADEMIK</h1>
+      <p class="text-secondary fs-6 mb-4">
+        Sistem Pengelolaan KRS, Presensi Real-Time &amp; Evaluasi Nilai
+      </p>
+      <hr class="my-4" style="border-color: #DEE2E6;">
+      <p class="text-muted small mb-0">
+        Terintegrasi untuk Mahasiswa, Dosen Wali/Pengampu, dan Admin Akademik dengan validasi SKS otomatis,
+        deteksi jadwal bentrok, presensi real-time, serta kalkulasi nilai KHS berbobot (30% Tugas, 30% UTS, 40% UAS).
+      </p>
+    </div>
+    <div class="text-muted small">
+      SIAKAD Portal MVP &bull; Manajemen Proyek TI
+    </div>
+  </section>
+
+  <!-- Kolom Kanan: Login Card sesuai Figma -->
+  <section class="login-form-pane">
+    <div class="login-card-box">
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+          {% for category, message in messages %}
+            <div class="alert alert-{{ category }} alert-dismissible fade show mb-3" role="alert">
+              {{ message }}
+              <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>
+          {% endfor %}
+        {% endif %}
+      {% endwith %}
+
+      <div class="siakad-card mb-0">
+        <div class="siakad-card-body">
+          <div class="portal-category">MULAI DARI LOGIN</div>
+          <h2 class="h4 fw-bold mb-1">Login Portal Akademik</h2>
+          <p class="text-muted small mb-4">Gunakan akun akademik Anda untuk melanjutkan.</p>
+
+          <form method="POST" action="{{ url_for('login') }}">
+            <div class="mb-3">
+              <label for="username" class="form-label fw-medium">Username</label>
+              <input type="text" id="username" name="username" class="form-control" placeholder="Masukkan username" required autofocus>
+            </div>
+            <div class="mb-4">
+              <label for="password" class="form-label fw-medium">Password</label>
+              <input type="password" id="password" name="password" class="form-control" placeholder="Masukkan password" required>
+            </div>
+            <button type="submit" class="btn btn-primary w-100 py-2 fw-semibold">
+              Masuk ke Portal
+            </button>
+          </form>
+
+          {% if demo_mode %}
+          <!-- Kotak Akun Demo Siap Pakai sesuai Figma (Hanya tampil saat DEMO_MODE=True - Revisi T13) -->
+          <hr class="my-4" style="border-color: #DEE2E6;">
+          <div class="p-3 rounded" style="background-color: #F4F6F9; border: 1px solid #DEE2E6;">
+            <div class="fw-semibold small mb-2 text-dark">Akun Demo Siap Pakai:</div>
+            <div class="small text-secondary mb-1">
+              &bull; <strong>Mahasiswa:</strong> <code>user: mhs1 | pass: mhs123</code> (atau <code>mhs2</code>)
+            </div>
+            <div class="small text-secondary mb-1">
+              &bull; <strong>Dosen Wali/Pengampu:</strong> <code>user: dosen | pass: dosen123</code>
+            </div>
+            <div class="small text-secondary mb-0">
+              &bull; <strong>Admin Akademik:</strong> <code>user: admin | pass: admin123</code>
+            </div>
+          </div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </section>
+</div>
+{% endblock %}

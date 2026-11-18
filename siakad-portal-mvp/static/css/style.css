@@ -1,0 +1,281 @@
+/* ==========================================================================
+   SIAKAD PORTAL MVP — Design System Stylesheet (Sesuai Figma Design 1440px)
+   Palet Warna Resmi Figma:
+   - Primary Blue  : #0D6EFD
+   - Success Green : #198754
+   - Warning Yellow: #FFC107
+   - Danger Red    : #DC3545
+   - Background    : #F4F6F9
+   - Surface       : #FFFFFF
+   - Text Utama    : #212529
+   - Muted         : #6C757D
+   - Border        : #DEE2E6
+   ========================================================================== */
+
+:root {
+  --siakad-primary: #0D6EFD;
+  --siakad-success: #198754;
+  --siakad-warning: #FFC107;
+  --siakad-danger: #DC3545;
+  --siakad-bg: #F4F6F9;
+  --siakad-surface: #FFFFFF;
+  --siakad-text: #212529;
+  --siakad-muted: #6C757D;
+  --siakad-border: #DEE2E6;
+}
+
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  background-color: var(--siakad-bg);
+  color: var(--siakad-text);
+  font-size: 14px;
+  margin: 0;
+  padding: 0;
+  min-height: 100vh;
+}
+
+/* Navbar 88px sesuai Figma Style Guide */
+.siakad-navbar {
+  height: 88px;
+  background-color: var(--siakad-surface);
+  border-bottom: 1px solid var(--siakad-border);
+  padding: 0 64px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.siakad-brand {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--siakad-text);
+  text-decoration: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.siakad-brand-accent {
+  width: 10px;
+  height: 24px;
+  background-color: var(--siakad-primary);
+  border-radius: 3px;
+  display: inline-block;
+}
+
+.siakad-greeting {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--siakad-text);
+}
+
+/* Container Utama Desktop 1440px (margin horizontal 64px -> lebar konten 1312px) */
+.siakad-container {
+  max-width: 1440px;
+  margin: 0 auto;
+  padding: 32px 64px 56px 64px;
+}
+
+/* Academic Page Heading */
+.academic-heading-block {
+  margin-bottom: 32px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--siakad-border);
+}
+
+.portal-category {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--siakad-primary);
+  margin-bottom: 4px;
+}
+
+.academic-page-title {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--siakad-text);
+  margin: 0 0 4px 0;
+}
+
+.academic-page-subtitle {
+  font-size: 14px;
+  color: var(--siakad-muted);
+  margin: 0;
+}
+
+/* Card Spesifikasi Figma: Permukaan putih solid, radius 6px, border 1px #DEE2E6, padding 24px */
+.siakad-card {
+  background-color: var(--siakad-surface);
+  border: 1px solid var(--siakad-border);
+  border-radius: 6px;
+  margin-bottom: 24px;
+}
+
+.siakad-card-header {
+  padding: 18px 24px;
+  border-bottom: 1px solid var(--siakad-border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.siakad-card-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--siakad-text);
+  margin: 0;
+}
+
+.siakad-card-body {
+  padding: 24px;
+}
+
+/* Rasio Kolom Admin 400px : 888px (gap 24px = total 1312px) */
+.admin-grid {
+  display: grid;
+  grid-template-columns: 400px 1fr;
+  gap: 24px;
+  align-items: start;
+}
+
+/* Halaman Login: Latar Kertas Akademik Petak 48px dengan garis biru tipis */
+.login-wrapper {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: 1.05fr 0.95fr;
+  background-color: var(--siakad-surface);
+}
+
+.login-paper-pane {
+  background-color: var(--siakad-bg);
+  background-image:
+    linear-gradient(to right, rgba(13, 110, 253, 0.08) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(13, 110, 253, 0.08) 1px, transparent 1px);
+  background-size: 48px 48px;
+  border-right: 1px solid var(--siakad-border);
+  padding: 64px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.login-form-pane {
+  background-color: var(--siakad-surface);
+  padding: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.login-card-box {
+  width: 100%;
+  max-width: 440px;
+}
+
+.login-title {
+  font-size: 32px;
+  font-weight: 700;
+  color: var(--siakad-text);
+  line-height: 1.25;
+  margin-bottom: 12px;
+}
+
+/* Tabel Spesifikasi Figma (Header 12px Semi Bold, Sel 14px Regular) */
+.siakad-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 0;
+}
+
+.siakad-table thead th {
+  background-color: #F8F9FA;
+  color: var(--siakad-muted);
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--siakad-border);
+}
+
+.siakad-table tbody td {
+  font-size: 14px;
+  color: var(--siakad-text);
+  padding: 14px;
+  border-bottom: 1px solid var(--siakad-border);
+  vertical-align: middle;
+}
+
+/* Input & Button Radius sesuai Figma (Input 6px, Tombol & Badge 4px) */
+.form-control, .form-select {
+  border-radius: 6px;
+  border: 1px solid var(--siakad-border);
+  font-size: 14px;
+  padding: 9px 12px;
+}
+
+.btn {
+  border-radius: 4px;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.btn-sm {
+  font-size: 12px;
+  padding: 5px 10px;
+  border-radius: 4px;
+}
+
+.badge-siakad {
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 5px 10px;
+  display: inline-block;
+}
+
+.score-label {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--siakad-muted);
+  display: block;
+  margin-bottom: 2px;
+}
+
+/* Catatan Figma Style Guide: perilaku pulse pada tombol Klik Hadir & badge SEDANG DIBUKA */
+@keyframes siakadPulse {
+  0% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.03); opacity: 0.88; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+.pulse-realtime {
+  animation: siakadPulse 1.8s infinite ease-in-out;
+}
+
+@media (max-width: 992px) {
+  .siakad-navbar {
+    padding: 0 20px;
+    height: auto;
+    min-height: 72px;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .siakad-container {
+    padding: 24px 20px;
+  }
+  .admin-grid {
+    grid-template-columns: 1fr;
+  }
+  .login-wrapper {
+    grid-template-columns: 1fr;
+  }
+  .login-paper-pane {
+    padding: 36px 24px;
+  }
+  .login-form-pane {
+    padding: 36px 24px;
+  }
+}
