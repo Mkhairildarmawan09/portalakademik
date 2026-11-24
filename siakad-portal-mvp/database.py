@@ -1,20 +1,27 @@
 """
-Modul Basis Data & Seed Data Otomatis — SIAKAD Portal MVP
+Modul Basis Data, Helper Validasi Jadwal/Token, & Seed Data Otomatis — SIAKAD Portal MVP
 Sesuai Desain Figma & Perbaikan Audit (T5, T6, T7, T12, T13)
 Menggunakan SQLite3 (akademik.db) dengan kata sandi ter-hash (werkzeug.security).
 """
 
 import os
+import re
+import secrets
 import sqlite3
+import string
 from datetime import datetime
+
 try:
     from werkzeug.security import generate_password_hash, check_password_hash
 except ImportError:
-    import hashlib, hmac, secrets
+    import hashlib
+    import hmac
+
     def generate_password_hash(password: str) -> str:
         salt = secrets.token_hex(8)
         dk = hashlib.pbkdf2_hmac("sha256", password.encode(), salt.encode(), 100000).hex()
         return f"pbkdf2:sha256:100000${salt}${dk}"
+
     def check_password_hash(pwhash: str, password: str) -> bool:
         try:
             _, salt, dk = pwhash.split("$", 2)
@@ -26,6 +33,9 @@ except ImportError:
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(BASE_DIR, "akademik.db")
 
+HARI_PATTERN = r"(senin|selasa|rabu|kamis|jumat|jum'at|sabtu|minggu)"
+JAM_PATTERN = r"(\d{1,2})[:.](\d{2})\s*[-–—]\s*(\d{1,2})[:.](\d{2})"
+
 
 def get_db_connection():
     """Membuka koneksi SQLite dengan Row factory agar kolom dapat diakses seperti dict."""
@@ -33,6 +43,52 @@ def get_db_connection():
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     return conn
+
+
+def generate_token_presensi(length: int = 6) -> str:
+    """Membangkitkan kode token presensi alfanumerik acak sepanjang 6 karakter (FR-11)."""
+    alphabet = string.ascii_uppercase + string.digits
+    return "".join(secrets.choice(alphabet) for _ in range(length))
+
+
+def parse_jadwal(jadwal_str: str):
+    """
+    Mem-parsing string jadwal (mis. 'Senin, 08:00 - 10:30') menjadi tuple
+    (hari_normalized, menit_mulai, menit_selesai). Mengembalikan None bila format tidak standar.
+    """
+    if not jadwal_str:
+        return None
+    teks = jadwal_str.strip().lower()
+    hari_match = re.search(HARI_PATTERN, teks)
+    jam_match = re.search(JAM_PATTERN, teks)
+    if not hari_match or not jam_match:
+        return None
+
+    hari = hari_match.group(1).replace("'", "")
+    jam_mulai = int(jam_match.group(1))
+    menit_mulai = int(jam_match.group(2))
+    jam_selesai = int(jam_match.group(3))
+    menit_selesai = int(jam_match.group(4))
+
+    total_mulai = jam_mulai * 60 + menit_mulai
+    total_selesai = jam_selesai * 60 + menit_selesai
+    if total_selesai <= total_mulai:
+        return None
+    return hari, total_mulai, total_selesai
+
+
+def is_jadwal_bentrok(jadwal_a: str, jadwal_b: str) -> bool:
+    """
+    Mendeteksi bentrok jadwal berdasarkan kesamaan hari dan irisan rentang jam (FR-09 / TC-17).
+    Jika salah satu jadwal tidak mengikuti format standar, gunakan perbandingan teks langsung.
+    """
+    parsed_a = parse_jadwal(jadwal_a)
+    parsed_b = parse_jadwal(jadwal_b)
+    if parsed_a and parsed_b:
+        hari_a, start_a, end_a = parsed_a
+        hari_b, start_b, end_b = parsed_b
+        return hari_a == hari_b and start_a < end_b and start_b < end_a
+    return jadwal_a.strip().lower() == jadwal_b.strip().lower()
 
 
 def hitung_nilai_dan_huruf(tugas: float, uts: float, uas: float):
@@ -110,7 +166,7 @@ def init_db():
         """
     )
 
-    # 4. Tabel attendance_logs (Log riwayat check-in presensi real-time mahasiswa)
+    # 4. Tabel attendance_logs (Log riwayat check-in presensi real-time mahasiswa & pencegahan duplikasi)
     cur.execute(
         """
         CREATE TABLE IF NOT EXISTS attendance_logs (
@@ -122,6 +178,7 @@ def init_db():
             tanggal TEXT,
             status_hadir TEXT DEFAULT 'Hadir',
             waktu_checkin TEXT,
+            UNIQUE(mk_id, mahasiswa_id, token_sesi, tanggal),
             FOREIGN KEY (mk_id) REFERENCES matakuliah(id) ON DELETE CASCADE,
             FOREIGN KEY (mahasiswa_id) REFERENCES users(id) ON DELETE CASCADE
         )
@@ -148,7 +205,6 @@ def init_db():
     # Cek apakah seed data sudah ada
     user_count = cur.execute("SELECT COUNT(*) FROM users").fetchone()[0]
     if user_count == 0:
-        # Seed Users sesuai nama di desain Figma (Password di-hash menggunakan werkzeug.security - NFR-01 & T13)
         cur.execute(
             """
             INSERT INTO users (username, password_hash, full_name, role, nim_nip, dosen_pa_id, sks_lalu, ipk_lalu)
@@ -165,7 +221,6 @@ def init_db():
         )
         dosen_id = cur.lastrowid
 
-        # Mahasiswa 1: Andi Pratama & Mahasiswa 2: Siti Rahmawati (dengan riwayat semester lalu untuk hitung IPK)
         cur.execute(
             """
             INSERT INTO users (username, password_hash, full_name, role, nim_nip, dosen_pa_id, sks_lalu, ipk_lalu)
@@ -184,7 +239,6 @@ def init_db():
         )
         mhs2_id = cur.lastrowid
 
-        # Seed 4 Mata Kuliah sesuai desain Figma (TI-301 s.d. TI-304)
         courses_seed = [
             ("TI-301", "Manajemen Proyek TI", 3, "Senin, 08:00 - 10:30", 40, 4, 1, "MPTI04", dosen_id),
             ("TI-302", "Rekayasa Perangkat Lunak", 3, "Rabu, 08:00 - 10:30", 40, 4, 0, "RPL004", dosen_id),
@@ -204,8 +258,6 @@ def init_db():
 
         now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
 
-        # Seed KRS & Nilai untuk Andi Pratama (mhs1) sesuai tampilan Figma:
-        # 1) TI-301: Disetujui, Hadir 3/4 (75%), Nilai 85.5 (A) [Tugas=85, UTS=85, UAS=86.25 -> 85.5]
         cur.execute(
             """
             INSERT INTO krs (mahasiswa_id, mk_id, status_persetujuan, jumlah_hadir, created_at)
@@ -223,7 +275,6 @@ def init_db():
             (krs1_id, akhir1, huruf1, bobot1),
         )
 
-        # 2) TI-302: Menunggu Dosen, Hadir 0/4 (0%), belum ada nilai
         cur.execute(
             """
             INSERT INTO krs (mahasiswa_id, mk_id, status_persetujuan, jumlah_hadir, created_at)
@@ -240,7 +291,6 @@ def init_db():
             (krs2_id,),
         )
 
-        # Seed KRS & Nilai untuk Siti Rahmawati (mhs2) sesuai tampilan Figma (77.9 (B)):
         cur.execute(
             """
             INSERT INTO krs (mahasiswa_id, mk_id, status_persetujuan, jumlah_hadir, created_at)
