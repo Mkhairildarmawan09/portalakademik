@@ -1,6 +1,6 @@
-﻿"""
+"""
 Controller Utama Aplikasi Web SIAKAD Portal MVP (Flask 3.0.3)
-Disesuaikan 100% dengan Desain UI/UX Figma & Revisi Audit MPTI (T1 s.d. T13)
+Disesuaikan 100% dengan Desain UI/UX Figma & Revisi Audit MPTI (T1 s.d. T19)
 """
 
 import os
@@ -8,13 +8,21 @@ from datetime import datetime
 from functools import wraps
 from flask import Flask, render_template, request, redirect, url_for, session, flash
 from werkzeug.security import generate_password_hash, check_password_hash
-from database import get_db_connection, init_db, verify_user_credentials, hitung_nilai_dan_huruf
+from database import (
+    get_db_connection,
+    init_db,
+    verify_user_credentials,
+    hitung_nilai_dan_huruf,
+    is_jadwal_bentrok,
+    generate_token_presensi,
+)
 
 app = Flask(__name__)
 app.secret_key = os.getenv("FLASK_SECRET_KEY", "siakad-portal-mvp-secret-2026")
 
 # Pengaturan DEMO_MODE untuk menampilkan/menyembunyikan kotak akun demo di halaman login (Revisi T13)
 DEMO_MODE = os.getenv("DEMO_MODE", "True").lower() == "true"
+FLASK_DEBUG = os.getenv("FLASK_DEBUG", "False").lower() == "true"
 MAX_SKS_KRS = 24
 
 
@@ -32,6 +40,24 @@ def login_required(allowed_roles=None):
             return fn(*args, **kwargs)
         return wrapper
     return decorator
+
+
+def hitung_ringkasan_akademik(user_info, krs_rows):
+    """Menghitung total SKS, IPS semester berjalan, dan IPK kumulatif (FR-15 / US-19)."""
+    total_sks_diajukan = sum(r["sks"] for r in krs_rows if r["status_persetujuan"] != "Ditolak")
+    sks_dinilai = sum(r["sks"] for r in krs_rows if r["nilai_huruf"] != "-")
+    mutu_semester = sum(r["sks"] * r["bobot_mutu"] for r in krs_rows if r["nilai_huruf"] != "-")
+    ips = round(mutu_semester / sks_dinilai, 2) if sks_dinilai > 0 else 0.00
+
+    sks_lalu = user_info["sks_lalu"] if user_info else 0
+    ipk_lalu = user_info["ipk_lalu"] if user_info else 0.0
+    total_sks_kumulatif = sks_lalu + sks_dinilai
+    if total_sks_kumulatif > 0:
+        ipk = round(((sks_lalu * ipk_lalu) + mutu_semester) / total_sks_kumulatif, 2)
+    else:
+        ipk = 0.00
+
+    return total_sks_diajukan, sks_dinilai, total_sks_kumulatif, ips, ipk
 
 
 @app.route("/")
@@ -167,8 +193,10 @@ def edit_mk(mk_id):
 
     try:
         sks = int(sks_raw)
+        if sks < 1 or sks > 6:
+            raise ValueError
     except ValueError:
-        flash("Beban SKS harus berupa angka valid!", "warning")
+        flash("Beban SKS harus berupa angka antara 1 hingga 6!", "warning")
         return redirect(url_for("dashboard_admin"))
 
     conn = get_db_connection()
@@ -194,9 +222,10 @@ def edit_mk(mk_id):
     return redirect(url_for("dashboard_admin"))
 
 
-@app.route("/hapus_mk/<int:mk_id>", methods=["POST", "GET"])
+@app.route("/hapus_mk/<int:mk_id>", methods=["POST"])
 @login_required(["admin"])
 def hapus_mk(mk_id):
+    """Menghapus mata kuliah secara aman — khusus metode POST (NFR-01)."""
     conn = get_db_connection()
     mk = conn.execute("SELECT kode_mk, nama_mk FROM matakuliah WHERE id = ?", (mk_id,)).fetchone()
     if mk:
@@ -221,7 +250,7 @@ def dashboard_mahasiswa():
     krs_rows = conn.execute(
         """
         SELECT k.id AS krs_id, k.mk_id, k.status_persetujuan, k.jumlah_hadir,
-               m.kode_mk, m.nama_mk, m.sks, m.jadwal, m.total_pertemuan, m.sesi_dibuka,
+               m.kode_mk, m.nama_mk, m.sks, m.jadwal, m.total_pertemuan, m.sesi_dibuka, m.token_sesi,
                COALESCE(g.nilai_tugas, 0) AS nilai_tugas,
                COALESCE(g.nilai_uts, 0) AS nilai_uts,
                COALESCE(g.nilai_uas, 0) AS nilai_uas,
@@ -236,29 +265,28 @@ def dashboard_mahasiswa():
         """,
         (mhs_id,),
     ).fetchall()
+
+    # Tandai sesi yang sudah di-check-in hari ini agar UI menonaktifkan form ganda (NFR-04)
+    hari_ini = datetime.now().strftime("%Y-%m-%d")
+    log_hari_ini = conn.execute(
+        """
+        SELECT mk_id, token_sesi FROM attendance_logs
+        WHERE mahasiswa_id = ? AND tanggal = ?
+        """,
+        (mhs_id, hari_ini),
+    ).fetchall()
     conn.close()
 
+    sudah_hadir_keys = {(row["mk_id"], row["token_sesi"]) for row in log_hari_ini}
     mk_diambil_ids = {r["mk_id"] for r in krs_rows}
-    total_sks_diajukan = sum(r["sks"] for r in krs_rows if r["status_persetujuan"] != "Ditolak")
-
-    # Perhitungan IPS Semester Aktif & IPK Kumulatif (FR-15 / US-19)
-    sks_dinilai = sum(r["sks"] for r in krs_rows if r["nilai_huruf"] != "-")
-    mutu_semester = sum(r["sks"] * r["bobot_mutu"] for r in krs_rows if r["nilai_huruf"] != "-")
-    ips = round(mutu_semester / sks_dinilai, 2) if sks_dinilai > 0 else 0.00
-
-    sks_lalu = user_info["sks_lalu"] if user_info else 0
-    ipk_lalu = user_info["ipk_lalu"] if user_info else 0.0
-    total_sks_kumulatif = sks_lalu + sks_dinilai
-    if total_sks_kumulatif > 0:
-        ipk = round(((sks_lalu * ipk_lalu) + mutu_semester) / total_sks_kumulatif, 2)
-    else:
-        ipk = 0.00
+    total_sks_diajukan, _, _, ips, ipk = hitung_ringkasan_akademik(user_info, krs_rows)
 
     return render_template(
         "dashboard_mahasiswa.html",
         semua_mk=semua_mk,
         krs_list=krs_rows,
         mk_diambil_ids=mk_diambil_ids,
+        sudah_hadir_keys=sudah_hadir_keys,
         total_sks=total_sks_diajukan,
         max_sks=MAX_SKS_KRS,
         ips=ips,
@@ -266,10 +294,66 @@ def dashboard_mahasiswa():
     )
 
 
+@app.route("/cetak_khs")
+@login_required(["mahasiswa"])
+def cetak_khs():
+    """Halaman cetak Kartu Hasil Studi (KHS) siap ekspor PDF (FR-16 / US-20 / TC-23)."""
+    mhs_id = session["user_id"]
+    conn = get_db_connection()
+    user_info = conn.execute(
+        """
+        SELECT u.*, pa.full_name AS nama_dosen_pa, pa.nim_nip AS nip_dosen_pa
+        FROM users u
+        LEFT JOIN users pa ON pa.id = u.dosen_pa_id
+        WHERE u.id = ?
+        """,
+        (mhs_id,),
+    ).fetchone()
+
+    krs_rows = conn.execute(
+        """
+        SELECT k.id AS krs_id, k.semester_aktif, k.status_persetujuan, k.jumlah_hadir,
+               m.kode_mk, m.nama_mk, m.sks, m.jadwal, m.total_pertemuan,
+               COALESCE(g.nilai_tugas, 0) AS nilai_tugas,
+               COALESCE(g.nilai_uts, 0) AS nilai_uts,
+               COALESCE(g.nilai_uas, 0) AS nilai_uas,
+               COALESCE(g.nilai_akhir, 0) AS nilai_akhir,
+               COALESCE(g.nilai_huruf, '-') AS nilai_huruf,
+               COALESCE(g.bobot_mutu, 0) AS bobot_mutu
+        FROM krs k
+        JOIN matakuliah m ON m.id = k.mk_id
+        LEFT JOIN grades g ON g.krs_id = k.id
+        WHERE k.mahasiswa_id = ? AND k.status_persetujuan != 'Ditolak'
+        ORDER BY m.kode_mk ASC
+        """,
+        (mhs_id,),
+    ).fetchall()
+    conn.close()
+
+    total_sks_diajukan, sks_dinilai, total_sks_kumulatif, ips, ipk = hitung_ringkasan_akademik(
+        user_info, krs_rows
+    )
+    semester_aktif = krs_rows[0]["semester_aktif"] if krs_rows else "Ganjil 2026/2027"
+    tanggal_cetak = datetime.now().strftime("%d-%m-%Y %H:%M")
+
+    return render_template(
+        "cetak_khs.html",
+        mahasiswa=user_info,
+        krs_list=krs_rows,
+        semester_aktif=semester_aktif,
+        total_sks=total_sks_diajukan,
+        sks_dinilai=sks_dinilai,
+        total_sks_kumulatif=total_sks_kumulatif,
+        ips=ips,
+        ipk=ipk,
+        tanggal_cetak=tanggal_cetak,
+    )
+
+
 @app.route("/ajukan_krs/<int:mk_id>", methods=["POST"])
 @login_required(["mahasiswa"])
 def ajukan_krs(mk_id):
-    """Pengajuan KRS Mahasiswa dengan validasi batas 24 SKS (FR-08) & deteksi jadwal bentrok (FR-09)."""
+    """Pengajuan KRS Mahasiswa dengan validasi batas 24 SKS (FR-08) & deteksi bentrok irisan jam (FR-09)."""
     mhs_id = session["user_id"]
     conn = get_db_connection()
 
@@ -306,13 +390,13 @@ def ajukan_krs(mk_id):
         )
         return redirect(url_for("dashboard_mahasiswa"))
 
-    # 3. Validasi deteksi bentrok jadwal (US-10 / FR-09)
+    # 3. Validasi deteksi bentrok jadwal berbasis hari & irisan rentang jam (US-10 / FR-09 / TC-17)
     for r in krs_aktif:
-        if r["jadwal"].strip().lower() == mk_target["jadwal"].strip().lower():
+        if is_jadwal_bentrok(r["jadwal"], mk_target["jadwal"]):
             conn.close()
             flash(
-                f"Jadwal bentrok! {mk_target['kode_mk']} memiliki jadwal yang sama "
-                f"({mk_target['jadwal']}) dengan {r['kode_mk']} ({r['nama_mk']}).",
+                f"Jadwal bentrok! {mk_target['kode_mk']} ({mk_target['jadwal']}) beririsan "
+                f"dengan {r['kode_mk']} - {r['nama_mk']} ({r['jadwal']}).",
                 "danger",
             )
             return redirect(url_for("dashboard_mahasiswa"))
@@ -343,8 +427,13 @@ def ajukan_krs(mk_id):
 @app.route("/hadir/<int:krs_id>", methods=["POST"])
 @login_required(["mahasiswa"])
 def klik_hadir(krs_id):
-    """Pencatatan kehadiran real-time oleh mahasiswa saat sesi dibuka Dosen (US-14 / FR-12)."""
+    """
+    Pencatatan kehadiran real-time mahasiswa dengan validasi kode token aktif (FR-12 / TC-19 & TC-20)
+    serta pencegahan presensi ganda pada sesi dan tanggal yang sama (NFR-04).
+    """
     mhs_id = session["user_id"]
+    token_input = request.form.get("token_sesi", "").strip().upper()
+
     conn = get_db_connection()
     row = conn.execute(
         """
@@ -372,19 +461,48 @@ def klik_hadir(krs_id):
         flash(f"Sesi presensi untuk {row['kode_mk']} sedang ditutup!", "warning")
         return redirect(url_for("dashboard_mahasiswa"))
 
-    hadir_baru = min(row["jumlah_hadir"] + 1, row["total_pertemuan"])
+    token_aktif = (row["token_sesi"] or "").strip().upper()
+    if not token_input or token_input != token_aktif:
+        conn.close()
+        flash("Token presensi tidak valid! Silakan masukkan kode token aktif dari Dosen.", "danger")
+        return redirect(url_for("dashboard_mahasiswa"))
+
     now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    tanggal_hari_ini = now_str[:10]
+
+    # Cek presensi ganda pada sesi token & tanggal yang sama (NFR-04)
+    duplikat = conn.execute(
+        """
+        SELECT id FROM attendance_logs
+        WHERE mk_id = ? AND mahasiswa_id = ? AND token_sesi = ? AND tanggal = ?
+        """,
+        (row["mk_id"], mhs_id, token_aktif, tanggal_hari_ini),
+    ).fetchone()
+    if duplikat:
+        conn.close()
+        flash(f"Anda sudah tercatat hadir untuk {row['kode_mk']} pada sesi presensi ini!", "warning")
+        return redirect(url_for("dashboard_mahasiswa"))
+
+    if row["jumlah_hadir"] >= row["total_pertemuan"]:
+        conn.close()
+        flash(f"Jumlah kehadiran untuk {row['kode_mk']} sudah mencapai batas maksimal pertemuan.", "info")
+        return redirect(url_for("dashboard_mahasiswa"))
+
+    hadir_baru = row["jumlah_hadir"] + 1
     conn.execute("UPDATE krs SET jumlah_hadir = ? WHERE id = ?", (hadir_baru, krs_id))
     conn.execute(
         """
         INSERT INTO attendance_logs (mk_id, mahasiswa_id, pertemuan_ke, token_sesi, tanggal, status_hadir, waktu_checkin)
         VALUES (?, ?, ?, ?, ?, 'Hadir', ?)
         """,
-        (row["mk_id"], mhs_id, hadir_baru, row["token_sesi"], now_str[:10], now_str),
+        (row["mk_id"], mhs_id, hadir_baru, token_aktif, tanggal_hari_ini, now_str),
     )
     conn.commit()
     conn.close()
-    flash(f"Presensi real-time berhasil dicatat untuk {row['kode_mk']} ({hadir_baru}/{row['total_pertemuan']})!", "success")
+    flash(
+        f"Presensi real-time berhasil dicatat untuk {row['kode_mk']} ({hadir_baru}/{row['total_pertemuan']})!",
+        "success",
+    )
     return redirect(url_for("dashboard_mahasiswa"))
 
 
@@ -417,15 +535,26 @@ def dashboard_dosen():
 @app.route("/toggle_presensi/<int:mk_id>", methods=["POST"])
 @login_required(["dosen"])
 def toggle_presensi(mk_id):
-    """Membuka atau menutup sesi presensi real-time kelas oleh Dosen (US-13 / FR-11)."""
+    """Membuka sesi presensi real-time dengan token unik baru atau menutup sesi (US-13 / FR-11)."""
     conn = get_db_connection()
     mk = conn.execute("SELECT * FROM matakuliah WHERE id = ?", (mk_id,)).fetchone()
     if mk:
         status_baru = 0 if mk["sesi_dibuka"] else 1
-        conn.execute("UPDATE matakuliah SET sesi_dibuka = ? WHERE id = ?", (status_baru, mk_id))
-        conn.commit()
-        label = "DIBUKA (REAL-TIME)" if status_baru else "DITUTUP"
-        flash(f"Status sesi presensi {mk['kode_mk']} berhasil diubah menjadi {label}.", "success" if status_baru else "warning")
+        if status_baru == 1:
+            token_baru = generate_token_presensi()
+            conn.execute(
+                "UPDATE matakuliah SET sesi_dibuka = ?, token_sesi = ? WHERE id = ?",
+                (status_baru, token_baru, mk_id),
+            )
+            conn.commit()
+            flash(
+                f"Sesi presensi {mk['kode_mk']} DIBUKA (REAL-TIME). Kode Token Aktif: {token_baru}",
+                "success",
+            )
+        else:
+            conn.execute("UPDATE matakuliah SET sesi_dibuka = 0 WHERE id = ?", (mk_id,))
+            conn.commit()
+            flash(f"Sesi presensi {mk['kode_mk']} berhasil DITUTUP.", "warning")
     conn.close()
     return redirect(url_for("dashboard_dosen"))
 
@@ -444,7 +573,10 @@ def validasi_krs(krs_id, aksi):
     conn.execute("UPDATE krs SET status_persetujuan = ? WHERE id = ?", (status_baru, krs_id))
     conn.commit()
     conn.close()
-    flash(f"Status KRS mahasiswa berhasil diperbarui menjadi '{status_baru}'.", "success" if aksi == "setujui" else "warning")
+    flash(
+        f"Status KRS mahasiswa berhasil diperbarui menjadi '{status_baru}'.",
+        "success" if aksi == "setujui" else "warning",
+    )
     return redirect(url_for("dashboard_dosen"))
 
 
@@ -490,4 +622,4 @@ def input_nilai(krs_id):
 
 if __name__ == "__main__":
     init_db()
-    app.run(debug=True, host="127.0.0.1", port=5000)
+    app.run(debug=FLASK_DEBUG, host="127.0.0.1", port=5000)
