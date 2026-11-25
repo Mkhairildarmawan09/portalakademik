@@ -6,7 +6,7 @@
 <div class="academic-heading-block">
   <div class="portal-category">PORTAL AKADEMIK / DOSEN</div>
   <h1 class="academic-page-title">Perkuliahan &amp; evaluasi</h1>
-  <p class="academic-page-subtitle">Kelola sesi presensi, validasi KRS, dan evaluasi nilai mahasiswa.</p>
+  <p class="academic-page-subtitle">Kelola sesi presensi berbasis token, validasi KRS, dan evaluasi nilai mahasiswa.</p>
 </div>
 
 <!-- Card 1 (Lebar 1312px): Kontrol Sesi Presensi Real-Time Kelas -->
@@ -22,7 +22,7 @@
             <th>Kode &amp; Mata Kuliah</th>
             <th>Jadwal Kelas</th>
             <th class="text-center">Total Pertemuan</th>
-            <th class="text-center">Status Sesi Presensi</th>
+            <th class="text-center">Status &amp; Token Sesi</th>
             <th class="text-end">Aksi Dosen</th>
           </tr>
         </thead>
@@ -34,7 +34,12 @@
             <td class="text-center">{{ mk.total_pertemuan }} Pertemuan</td>
             <td class="text-center">
               {% if mk.sesi_dibuka %}
-                <span class="badge bg-success badge-siakad pulse-realtime">SEDANG DIBUKA (REAL-TIME)</span>
+                <div>
+                  <span class="badge bg-success badge-siakad pulse-realtime">SEDANG DIBUKA (REAL-TIME)</span>
+                </div>
+                <div class="small mt-1">
+                  Token Aktif: <code class="fw-bold text-primary">{{ mk.token_sesi }}</code>
+                </div>
               {% else %}
                 <span class="badge bg-secondary badge-siakad">DITUTUP</span>
               {% endif %}

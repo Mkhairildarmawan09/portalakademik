@@ -7,14 +7,14 @@
   <div>
     <div class="portal-category">PORTAL AKADEMIK / MAHASISWA</div>
     <h1 class="academic-page-title">Rencana studi &amp; hasil belajar</h1>
-    <p class="academic-page-subtitle">Ajukan KRS, isi presensi, dan pantau hasil perkuliahan Anda.</p>
+    <p class="academic-page-subtitle">Ajukan KRS, isi presensi dengan kode token, dan pantau hasil perkuliahan Anda.</p>
   </div>
-  <div class="d-flex gap-2 align-items-center">
+  <div class="d-flex gap-2 align-items-center flex-wrap">
     <span class="badge bg-primary badge-siakad">IPS Semester: {{ "%.2f"|format(ips) }}</span>
     <span class="badge bg-success badge-siakad">IPK Kumulatif: {{ "%.2f"|format(ipk) }}</span>
-    <button type="button" onclick="window.print()" class="btn btn-outline-primary btn-sm">
-      Cetak KRS / KHS (PDF)
-    </button>
+    <a href="{{ url_for('cetak_khs') }}" target="_blank" class="btn btn-outline-primary btn-sm">
+      Cetak KHS (PDF)
+    </a>
   </div>
 </div>
 
@@ -79,7 +79,7 @@
             <th>Mata Kuliah</th>
             <th class="text-center">SKS</th>
             <th class="text-center">Status KRS</th>
-            <th>Presensi Real-Time</th>
+            <th>Presensi Real-Time (Token)</th>
             <th class="text-center">Rincian Nilai (Tgs/UTS/UAS)</th>
             <th class="text-end">Akhir / Grade</th>
           </tr>
@@ -87,6 +87,7 @@
         <tbody>
           {% for item in krs_list %}
           {% set persen = ((item.jumlah_hadir / item.total_pertemuan) * 100)|int if item.total_pertemuan > 0 else 0 %}
+          {% set sudah_absen_sesi = (item.mk_id, item.token_sesi) in sudah_hadir_keys %}
           <tr>
             <td>
               <div class="fw-semibold">{{ item.kode_mk }} &mdash; {{ item.nama_mk }}</div>
@@ -108,11 +109,18 @@
                   Hadir: {{ item.jumlah_hadir }}/{{ item.total_pertemuan }} ({{ persen }}%)
                 </span>
                 {% if item.status_persetujuan == 'Disetujui' and item.sesi_dibuka %}
-                  <form method="POST" action="{{ url_for('klik_hadir', krs_id=item.krs_id) }}" class="d-inline">
-                    <button type="submit" class="btn btn-success btn-sm pulse-realtime">
-                      Klik Hadir Sekarang
-                    </button>
-                  </form>
+                  {% if sudah_absen_sesi %}
+                    <span class="badge bg-info text-dark badge-siakad">Sudah Check-In</span>
+                  {% else %}
+                    <form method="POST" action="{{ url_for('klik_hadir', krs_id=item.krs_id) }}" class="d-inline-flex gap-1 align-items-center">
+                      <input type="text" name="token_sesi" placeholder="Kode Token"
+                             class="form-control form-control-sm text-uppercase"
+                             style="width: 112px;" maxlength="12" required>
+                      <button type="submit" class="btn btn-success btn-sm pulse-realtime">
+                        Check-In
+                      </button>
+                    </form>
+                  {% endif %}
                 {% else %}
                   <span class="badge bg-secondary badge-siakad">Sesi Ditutup</span>
                 {% endif %}
